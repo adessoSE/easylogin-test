@@ -1,19 +1,34 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { reactive, ref, watch } from 'vue';
 import { useServerStatusStore } from '@/store/serverAcceptanceStatus';
-import { keystorePutReqeust } from '@/services/keystoreService';
+import { keystorePutRequest } from '@/services/keystoreService';
+import { useToast } from 'vue-toastification';
+import type { VForm } from 'vuetify/components/VForm';
 
+const toast = useToast();
 const serverStatusStore = useServerStatusStore();
 
-const keystorePassword = ref('');
-const keystoreAlias = ref('');
-const keystoreAliasPassword = ref('');
-const keystoreDigitalSignature = ref('');
+const formRef = ref<VForm | null>(null);
+const hasKeystoreDataChanged = ref(false);
+
+const keystoreData = reactive({
+    keystoreAlias: '',
+    keystorePassword: '',
+    keystoreAliasPassword: '',
+    keystoreDigitalSignature: ''
+});
+
+const keystoreFile = ref();
 const enableKeystoreAliasPasswordTextfield = ref(false);
 const validationStatus = ref<string>('');
-const isFormValid = ref(false);
 const isKeystoreFileFilled = ref(false);
-const keystoreFile = ref();
+
+watch(() => ({ ...keystoreData }),
+    (newVal, oldVal) => {
+        hasKeystoreDataChanged.value = true;
+    },
+    { deep: true }
+)
 
 const handleFileChange = async (event: Event) => {
     const target = event.target as HTMLInputElement;
@@ -21,8 +36,9 @@ const handleFileChange = async (event: Event) => {
     if (target.files && target.files.length > 0) {
         keystoreFile.value = target.files[0];
         isKeystoreFileFilled.value = true;
+        hasKeystoreDataChanged.value = true;
     }
-}
+};
 
 watch(validationStatus, (newValidationStatus) => {
     if (newValidationStatus === 'accepted') {
@@ -30,65 +46,88 @@ watch(validationStatus, (newValidationStatus) => {
     } else {
         serverStatusStore.setIsKeystoreAccepted('rejected');
     }
-})
+});
 
 watch(enableKeystoreAliasPasswordTextfield, (newStatus) => {
     if (newStatus === true) {
-        keystoreAliasPassword.value = keystorePassword.value;
+        keystoreData.keystoreAliasPassword = keystoreData.keystorePassword;
     }
-})
-
-const required = (inputField: any) => !!inputField || 'Field is required';
+});
 
 const clearFileInputField = () => {
     keystoreFile.value = null;
     isKeystoreFileFilled.value = false;
-}
-
-const onSubmit = async () => {
-    if (enableKeystoreAliasPasswordTextfield.value === true) {
-        keystoreAliasPassword.value = keystorePassword.value;
-    }
-   
-    keystorePutReqeust(keystoreFile.value, 
-                keystoreAlias.value, 
-                keystorePassword.value, 
-                keystoreAliasPassword.value, 
-                keystoreDigitalSignature.value)
-        .then(data => {
-            if (data.status === 202) {
-                validationStatus.value = 'accepted';
-                serverStatusStore.setNewUserInput(true);
-                console.log(data.status, ' - accepted');
-            }
-        }).catch(error => {
-            if (error.response) {
-                validationStatus.value = 'rejected';
-                console.log(error.response.status, ' - Error Response:', error.response.data);
-            }
-        });
 };
+
+const validateAndSubmit = async (): Promise<Boolean> => {
+    const result = await formRef.value?.validate();
+    const { valid, errors } = result || {};
+
+    if (valid) {
+        return submitToBackend();
+    } else {
+        return false;
+    }
+};
+
+const submitToBackend = async (): Promise<Boolean> => {
+    if (enableKeystoreAliasPasswordTextfield.value === true) {
+        keystoreData.keystoreAliasPassword = keystoreData.keystorePassword;
+    }
+
+    if (hasKeystoreDataChanged.value) {
+        hasKeystoreDataChanged.value = false;
+        const backendResponse = await keystorePutRequest(keystoreFile.value,
+            keystoreData.keystoreAlias,
+            keystoreData.keystorePassword,
+            keystoreData.keystoreAliasPassword,
+            keystoreData.keystoreDigitalSignature)
+            .then(response => {
+                if (response.status === 202) {
+                    validationStatus.value = 'accepted';
+                    serverStatusStore.setNewUserInput(true);
+                    console.log(response.status, ' - Keystore was accepted');
+                    toast.success("Keystore was accepted!", {
+                        timeout: 3000
+                    });
+                }
+                return true;
+            }).catch(error => {
+                if (error.response) {
+                    validationStatus.value = 'rejected';
+                    console.log(error.response.status, ' Keystore was rejected - Error Response:', error.response.data);
+                    toast.error("Keystore was rejected! " + error.response.data, { timeout: 5000 });
+                }
+                return false;
+            });
+
+        return backendResponse;
+    }
+    if (serverStatusStore.keystoreAccepted === 'rejected') return false;
+    return true;
+};
+
+const required = (inputField: any) => !!inputField || 'Field is required';
+
+defineExpose({ validateAndSubmit });
 </script>
 
 <template>
-    <v-form ref="form" v-model="isFormValid" @submit.prevent>
-        <v-file-input chips @change="handleFileChange" @click:clear="clearFileInputField" label="Keystore File" variant="outlined" :rules="[required]" required>
-        </v-file-input>
-        <v-text-field v-model="keystorePassword" label="Keystore Password" type="password" persistent-hint :rules="[required]" required>
-        </v-text-field>
-        <v-text-field v-model="keystoreAlias" label="Keystore Alias" type="text" persistent-hint :rules="[required]" required>
-        </v-text-field>
-        <v-text-field v-model="keystoreAliasPassword" label="Alias Password" type="password" persistent-hint :rules="[required]" required :disabled="enableKeystoreAliasPasswordTextfield">
-        </v-text-field>
-        <v-checkbox label="Are the keystore and keystore alias passwords the same?" v-model="enableKeystoreAliasPasswordTextfield">
-        </v-checkbox>
-        <v-select chips label="Digital Signature" :items="['SHA256withRSA']" variant="underlined" v-model="keystoreDigitalSignature" :rules="[required]" required>
-        </v-select>
-        <v-btn color="success" size="large" type="submit" variant="elevated" :disabled="(!isFormValid || !isKeystoreFileFilled)" @click="onSubmit">                
-            Save
-        </v-btn>
+    <v-form ref="formRef" validate-on="submit">
+        <v-file-input chips @change="handleFileChange" @click:clear="clearFileInputField" label="Keystore File"
+            variant="outlined" :rules="[required]" required></v-file-input>
+        <v-text-field v-model="keystoreData.keystorePassword" label="Keystore Password" type="password" persistent-hint
+            :rules="[required]" variant="outlined" required></v-text-field>
+        <v-text-field v-model="keystoreData.keystoreAlias" label="Keystore Alias" type="text" persistent-hint
+            :rules="[required]" variant="outlined" required></v-text-field>
+        <v-text-field v-model="keystoreData.keystoreAliasPassword" label="Alias Password" type="password"
+            persistent-hint variant="outlined" :rules="[required]" required
+            :disabled="enableKeystoreAliasPasswordTextfield"></v-text-field>
+        <v-checkbox label="Are the keystore and keystore alias passwords identical?"
+            v-model="enableKeystoreAliasPasswordTextfield"></v-checkbox>
+        <v-select chips label="Digital Signature" :items="['SHA256withRSA']" variant="outlined"
+            v-model="keystoreData.keystoreDigitalSignature" :rules="[required]" required></v-select>
     </v-form>
 </template>
-
 
 <style scoped></style>

@@ -11,6 +11,7 @@ import java.util.Base64;
 import org.eclipse.microprofile.openapi.annotations.media.Content;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.jboss.logging.Logger;
 
 import de.adesso.model.EncryptionSingleton;
 import jakarta.json.Json;
@@ -22,6 +23,8 @@ import jakarta.ws.rs.core.Response;
 
 @Path("/encryption")
 public class EncryptionResource {
+
+    private static final Logger LOG = Logger.getLogger(EncryptionResource.class);
 
     @PUT
     @APIResponse(
@@ -57,6 +60,7 @@ public class EncryptionResource {
         try {
             publicKeyBytes = Base64.getDecoder().decode(publicKeyString);
         } catch(IllegalArgumentException e){
+            LOG.error("Public key is invalid!");
             return Response.status(Response.Status.BAD_REQUEST).entity("Base64 decoding failed").build();
         }
 
@@ -67,11 +71,13 @@ public class EncryptionResource {
             
             EncryptionSingleton.getInstance().setPublicKey(publicKey);
         }catch(NoSuchAlgorithmException e){
+            LOG.error("The algorithm of the Public Key is not supported!");
             return Response.status(Response.Status.BAD_REQUEST).entity("Algorithm is not supported").build();
         } catch(InvalidKeySpecException e){
+            LOG.error("The key specs of the Public key are invalid!");
             return Response.status(Response.Status.BAD_REQUEST).entity("Invalid key specs").build();
         }
-
+        LOG.info("Public Key was accepted! info: " + publicKeyString);
         return Response.accepted().build();
     }
 }

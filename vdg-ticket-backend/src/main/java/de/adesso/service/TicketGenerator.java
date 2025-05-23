@@ -23,17 +23,16 @@ public class TicketGenerator {
 			String authLevel,
 			String authMethod, 
 			String issuerId) throws TicketException{
-		String ticketInfoString = createTicketInfoElement(
-				ticketId,
-				targetId, 
-				targetUserId, 
-				issuerUserId, 
-				userIPAddress, 
-				authLevel,
-				authMethod, 
-				issuerId,
-				privateKeyIssuerKey);
-		
+		String ticketInfoString = createTicketInfoElement(ticketId,
+														targetId, 
+														targetUserId, 
+														issuerUserId, 
+														userIPAddress, 
+														authLevel,
+														authMethod, 
+														issuerId,
+														privateKeyIssuerKey);
+
 		return "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
 				+ "<Ticket>"
 		        	+ createSignatureElement(ticketInfoString, signatureAlgorithm, keyId, privateKeyIssuerKey)
@@ -45,7 +44,7 @@ public class TicketGenerator {
 
 	public static String createTicketElement(Ticket ticket, PrivateKey privateKeyIssuerKey,String signatureAlgorithm,String keyId) throws TicketException{		
 		String ticketInfoString = createTicketInfoElement(
-				ticket.getTargetId(),
+				ticket.getTicketId(),
 				ticket.getTargetId(), 
 				ticket.getTargetUserId(), 
 				ticket.getIssuerUserId(), 
@@ -54,7 +53,6 @@ public class TicketGenerator {
 				ticket.getAuthMethod(), 
 				ticket.getIssuerId(),
 				privateKeyIssuerKey);
-		
 		return "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
 				+ "<Ticket>"
 		        	+ createSignatureElement(ticketInfoString, signatureAlgorithm, keyId, privateKeyIssuerKey)
@@ -74,16 +72,15 @@ public class TicketGenerator {
     		+ "</Signature>";
 	}
 	
-	private static String createTicketInfoElement(
-			String ticketId,
-			String targetId, 
-			String targetUserId, 
-			String issuerUserId, 
-			String userIPAddress, 
-			String authLevel,
-			String authMethod, 
-			String issuerId,
-			PrivateKey privateKeyIssuerKey) {
+	private static String createTicketInfoElement(String ticketId,
+												String targetId, 
+												String targetUserId, 
+												String issuerUserId, 
+												String userIPAddress, 
+												String authLevel,
+												String authMethod, 
+												String issuerId,
+												PrivateKey privateKeyIssuerKey) {
         return "<TicketId>" + ticketId + "</TicketId>"
     		+ "<TargetId>" + targetId + "</TargetId>"
     		+ "<TargetUserId>" + targetUserId + "</TargetUserId>"
