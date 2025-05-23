@@ -1,7 +1,7 @@
 import { apiClientFormData } from "./apiClientService";
  
 
-export const keystorePutReqeust = async (keystoreFile: File, keystoreAlias: string, keystorePassword: string, keystoreAliasPassword: string, keystoreDigitalSignature: string) => {
+export const keystorePutRequest = async (keystoreFile: File, keystoreAlias: string, keystorePassword: string, keystoreAliasPassword: string, keystoreDigitalSignature: string) => {
 
     const form = new FormData();
     form.append("keystoreFile", keystoreFile);

@@ -1,45 +1,82 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, defineExpose, reactive } from 'vue';
 import { useServerStatusStore } from '@/store/serverAcceptanceStatus';
-import {ticketPutRequest} from '@/services/ticketService'
+import { ticketPutRequest } from '@/services/ticketService';
+import { useToast } from 'vue-toastification';
+import type { VForm } from 'vuetify/components/VForm';
 
+const toast = useToast();
+
+const formRef = ref<VForm | null>(null);
 const serverStatusStore = useServerStatusStore();
-
-const ticketId = ref('');
-const targetId = ref('');
-const targetUserId = ref('');
-const issuerUserId = ref('');
-const userIPAddress = ref('');
-const authLevel = ref('');
-const authMethod = ref('');
-const issuerId = ref('');
 const validationStatus = ref<string>('');
-const isFormValid = ref(false);
+const hasTicketDataChanged = ref(false);
 
-const onSubmit = async () => {
-    ticketPutRequest(ticketId.value,
-        targetId.value,
-        targetUserId.value,
-        issuerUserId.value,
-        userIPAddress.value,
-        authLevel.value,
-        authMethod.value,
-        issuerId.value)
-        .then(data => {
-            if (data.status === 202) {
-                validationStatus.value = 'accepted';
-                serverStatusStore.setNewUserInput(true);
-                console.log(data.status, ' - accepted');
-            } else {
-                validationStatus.value = 'rejected';
-                console.log("error");
+const ticketData = reactive({
+    ticketId: '',
+    targetId: '',
+    targetUserId: '',
+    issuerUserId: '',
+    userIPAddress: '',
+    authLevel: '',
+    authMethod: '',
+    issuerId: ''
+});
+
+watch(() => ({ ...ticketData }),
+    (newVal, oldVal) => {
+        hasTicketDataChanged.value = true;
+    },
+    { deep: true }
+);
+
+const validateAndSubmit = async (): Promise<Boolean> => {
+    const result = await formRef.value?.validate();
+    const { valid, errors } = result || {};
+
+    if (valid) {
+        return submitToBackend();
+    } else {
+        return false;
+    }
+};
+
+const submitToBackend = async (): Promise<Boolean> => {
+    if (hasTicketDataChanged.value) {
+        hasTicketDataChanged.value = false;
+        const backendResponse = await ticketPutRequest(ticketData)
+            .then(response => {
+                if (response.status === 202) {
+                    validationStatus.value = 'accepted';
+                    serverStatusStore.setNewUserInput(true);
+                    console.log(response.status, ' - Ticket was accepted');
+
+                    toast.success("Ticket was accepted!", {
+                        timeout: 3000
+                    });
+                    return true;
+                } else {
+                    validationStatus.value = 'rejected';
+                    console.log("error - Ticket was rejected");
+                    toast.error("Ticket was rejected!", {
+                        timeout: 3000
+                    });
+                    return false;
+                }
+            }).catch(error => {
+                if (error.response) {
+                    validationStatus.value = 'rejected';
+                    console.log(error.response.status, ' - Error Response Data:', error.response.data);
+                }
+                return false;
             }
-        }).catch(error => {
-            if (error.response) {
-                validationStatus.value = 'rejected';
-                console.log(error.response.status, ' - Error Response Data:', error.response.data);
-            }
-        });
+            );
+
+        return backendResponse;
+    }
+    if (serverStatusStore.ticketAccepted === 'rejected') return false;
+
+    return true;
 };
 
 watch(validationStatus, (newValidationStatus) => {
@@ -48,38 +85,31 @@ watch(validationStatus, (newValidationStatus) => {
     } else {
         serverStatusStore.setIsTicketAccepted('rejected');
     }
-})
+});
 
 const required = (inputField: any) => !!inputField || 'Field is required';
+
+defineExpose({ validateAndSubmit });
 </script>
 
-
 <template>
-    <v-form ref="form" v-model="isFormValid" @submit.prevent>
-        <v-text-field :rules="[required]" class="mb-2" v-model="ticketId" label="TicketID" variant="underlined">
-        </v-text-field>
-        <v-text-field :rules="[required]" class="mb-2" variant="underlined" label="TargetID" v-model="targetId">
-        </v-text-field>
-        <v-text-field :rules="[required]" class="mb-2" v-model="issuerUserId" label="Issuer UserID"
-            variant="underlined">
-        </v-text-field>
-        <v-text-field :rules="[required]" class="mb-2" v-model="targetUserId" label="Target UserID"
-            variant="underlined">
-        </v-text-field>
-        <v-text-field :rules="[required]" class="mb-2" v-model="userIPAddress" label="User IP-Address"
-            variant="underlined">
-        </v-text-field>
-        <v-text-field :rules="[required]" class="mb-2" v-model="authLevel" label="Authentification Level"
-            variant="underlined">
-        </v-text-field>
-        <v-text-field :rules="[required]" class="mb-2" v-model="authMethod" label="Authentification Method"
-            variant="underlined">
-        </v-text-field>
-        <v-text-field :rules="[required]" class="mb-2" v-model="issuerId" label="IssuerId" variant="underlined">
-        </v-text-field>
-        <v-btn color="success" size="large" type="submit" variant="elevated" :disabled="!isFormValid" @click="onSubmit">
-            Save
-        </v-btn>
+    <v-form ref="formRef">
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.ticketId" label="TicketID"
+            variant="outlined"></v-text-field>
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.targetId" label="TargetID"
+            variant="outlined"></v-text-field>
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.issuerUserId" label="Issuer UserID"
+            variant="outlined"></v-text-field>
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.targetUserId" label="Target UserID"
+            variant="outlined"></v-text-field>
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.userIPAddress" label="User IP-Address"
+            variant="outlined"></v-text-field>
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.authLevel" label="Authentification Level"
+            variant="outlined"></v-text-field>
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.authMethod" label="Authentification Method"
+            variant="outlined"></v-text-field>
+        <v-text-field :rules="[required]" class="mb-1" v-model="ticketData.issuerId" label="IssuerId"
+            variant="outlined"></v-text-field>
     </v-form>
 </template>
 

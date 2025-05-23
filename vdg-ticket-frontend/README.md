@@ -1,4 +1,4 @@
-# vdg-ticket-frontend
+# VDG Ticket Frontend
 
 ```sh
 cd vdg-ticket-frontend
