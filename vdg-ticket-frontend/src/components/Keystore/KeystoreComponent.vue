@@ -59,18 +59,18 @@ const clearFileInputField = () => {
     isKeystoreFileFilled.value = false;
 };
 
-const validateAndSubmit = async (): Promise<Boolean> => {
+const validateAndSubmit = async (): Promise<boolean> => {
+    console.log("keystoreForm validateAndSubmit");
     const result = await formRef.value?.validate();
     const { valid, errors } = result || {};
 
-    if (valid) {
-        return submitToBackend();
-    } else {
+    if (!valid) {
         return false;
     }
+    return await submitToBackend();
 };
 
-const submitToBackend = async (): Promise<Boolean> => {
+const submitToBackend = async (): Promise<boolean> => {
     if (enableKeystoreAliasPasswordTextfield.value === true) {
         keystoreData.keystoreAliasPassword = keystoreData.keystorePassword;
     }

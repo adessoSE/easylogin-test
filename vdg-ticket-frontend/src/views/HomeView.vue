@@ -7,7 +7,9 @@ import { useServerStatusStore } from '@/store/serverAcceptanceStatus';
 import { onMounted, ref, watch } from 'vue';
 
 const tabs = ["Keystore", "Ticket", "Public Key", "Results"];
-const step = ref(0);
+const step = ref<number>(0);
+const isValid = ref(false);
+const isProcessing = ref(false);
 
 const keystoreForm = ref();
 const ticketForm = ref();
@@ -18,6 +20,7 @@ onMounted(() => {
     serverStatusStore.setIsKeystoreAccepted('');
     serverStatusStore.setIsTicketAccepted('');
     serverStatusStore.setIsPublicKeyAccepted('');
+    step.value = 0;
 });
 
 const serverStatusStore = useServerStatusStore();
@@ -30,46 +33,44 @@ watch(() => serverStatusStore.gotResult, (newStatus) => {
     }
 });
 
-const next = () => {
-    if (step.value === 0) {
-        // Keystore Tab
-        const valid: Promise<Boolean> = keystoreForm.value.validateAndSubmit();
-        valid.then(isValid => {
-            if (isValid) {
-                if (step.value < tabs.length - 2) {
-                    step.value++;
-                }
-            }
-        })
-    } else if (step.value === 1) {
-        // Ticket Tab
-        const valid: Promise<Boolean> = ticketForm.value.validateAndSubmit();
-        valid.then(isValid => {
-            if (isValid) {
-                if (step.value < tabs.length - 2) {
-                    step.value++;
-                }
-            }
-        })
-    } else if (step.value === 2) {
-        // Public Key / Encryption Tab
-        const valid: Promise<Boolean> = encryptionForm.value.validateAndSubmit();
-        valid.then(isValid => {
-            if (isValid) {
-                if (step.value < tabs.length - 1) {
-                    step.value++;
-                }
-                if (serverStatusStore.newUserInput) {
-                    const newTicket: Promise<Boolean> = resultForm.value.getEncryptedTicket();
-                    newTicket.then(newTicket => {
-                        if (newTicket) {
-                            console.log("Ticket success")
-                        }
-                    })
-                    serverStatusStore.setNewUserInput(false);
-                }
-            }
-        })
+const next = async () => {
+    if (isProcessing.value) {
+        return;
+    }
+
+    try {
+        isProcessing.value = true;
+        isValid.value = false;
+        switch (step.value) {
+            case 0:
+                // Keystore Tab
+                isValid.value = await keystoreForm.value?.validateAndSubmit();
+                break;
+            case 1:
+                // Ticket Tab 
+                isValid.value = await ticketForm.value?.validateAndSubmit();
+                break;
+
+            case 2:
+                // Public Key Tab
+                isValid.value = await encryptionForm.value?.validateAndSubmit();
+                break;
+            case 3:
+                // Result Tab 
+                isValid.value = true;
+                break;
+
+            default:
+                isValid.value = false;
+        }
+
+        if (isValid.value && step.value < tabs.length - 1) {
+            step.value++;
+        }
+    } catch (error) {
+        console.error("ERROR: ", error);
+    } finally {
+        isProcessing.value = false;
     }
 };
 
@@ -82,73 +83,66 @@ const back = () => {
 
 <template>
     <v-container max-width="700px">
-        <v-stepper v-model="step" show-actions border="opacity-25 sm">
+        <v-stepper v-model="step" show-actions class="opacity-25 sm">
             <v-stepper-header>
                 <v-container>
-                    <v-stepper-item v-if="serverStatusStore.keystoreAccepted === ''" title="Keystore" value="0"
-                        icon="mdi-lock-outline"></v-stepper-item>
-                    <v-stepper-item v-if="serverStatusStore.keystoreAccepted === 'accepted'" :rules="[() => true]"
-                        completed color="green" title="Keystore" subtitle="Accepted" value="0"
-                        icon="mdi-lock-outline"></v-stepper-item>
-                    <v-stepper-item v-if="serverStatusStore.keystoreAccepted === 'rejected'" :rules="[() => false]"
-                        title="Keystore" subtitle="Rejected" value="0" icon="mdi-lock-outline"></v-stepper-item>
-                </v-container>
-
-                <v-divider></v-divider>
-
-                <v-container>
-                    <v-stepper-item v-if="serverStatusStore.ticketAccepted === ''" title="Ticket" value="1"
-                        icon="mdi-format-page-break"></v-stepper-item>
-                    <v-stepper-item v-if="serverStatusStore.ticketAccepted === 'accepted'" :rules="[() => true]"
-                        title="Ticket" subtitle="Accepted" value="1" icon="mdi-format-page-break"
-                        color="green"></v-stepper-item>
-                    <v-stepper-item v-if="serverStatusStore.ticketAccepted === 'rejected'" :rules="[() => false]"
-                        title="Ticket" subtitle="Rejected" value="1" icon="mdi-format-page-break"></v-stepper-item>
-                </v-container>
-
-                <v-divider></v-divider>
-
-                <v-container>
-                    <v-stepper-item v-if="serverStatusStore.publicKeyAccepted === ''" title="Public Key" value="2"
-                        icon="mdi-download-lock"></v-stepper-item>
-                    <v-stepper-item v-if="serverStatusStore.publicKeyAccepted === 'accepted'" :rules="[() => true]"
-                        completed color="green" title="Public Key" subtitle="Accepted" value="2"></v-stepper-item>
-                    <v-stepper-item v-if="serverStatusStore.publicKeyAccepted === 'rejected'" :rules="[() => false]"
-                        title="Public Key" subtitle="Rejected" value="2"></v-stepper-item>
-                </v-container>
-
-                <v-divider></v-divider>
-
-                <v-container>
-                    <v-stepper-item title="Result" value="3" v-if="serverStatusStore.keystoreAccepted === '' || serverStatusStore.keystoreAccepted === 'rejected'
-                        || serverStatusStore.ticketAccepted === '' || serverStatusStore.ticketAccepted === 'rejected'
-                        || serverStatusStore.publicKeyAccepted === '' || serverStatusStore.publicKeyAccepted === 'rejected'
-                        && serverStatusStore.gotResult === false" icon="mdi-tray-arrow-down">
-
+                    <v-stepper-item title="Keystore"
+                        :subtitle="serverStatusStore.keystoreAccepted === 'accepted' ? 'Accepted' : (serverStatusStore.keystoreAccepted === 'rejected' ? 'Rejected' : undefined)"
+                        :color="serverStatusStore.keystoreAccepted === 'accepted' ? 'green' : undefined"
+                        :completed="serverStatusStore.keystoreAccepted === 'accepted'"
+                        :rules="[() => serverStatusStore.keystoreAccepted !== 'rejected']" value="0"
+                        icon="mdi-lock-outline">
                     </v-stepper-item>
-                    <v-stepper-item title="Result" value="3" v-if="(serverStatusStore.keystoreAccepted === 'accepted'
-                        && serverStatusStore.ticketAccepted === 'accepted'
-                        && serverStatusStore.publicKeyAccepted === 'accepted')" icon="mdi-tray-arrow-down"
-                        color="green">
+                </v-container>
+
+                <v-divider></v-divider>
+
+                <v-container>
+                    <v-stepper-item title="Ticket"
+                        :subtitle="serverStatusStore.ticketAccepted === 'accepted' ? 'Accepted' : (serverStatusStore.ticketAccepted === 'rejected' ? 'Rejected' : undefined)"
+                        :color="serverStatusStore.ticketAccepted === 'accepted' ? 'green' : undefined"
+                        :completed="serverStatusStore.ticketAccepted === 'accepted'"
+                        :rules="[() => serverStatusStore.ticketAccepted !== 'rejected']" value="1"
+                        icon="mdi-format-page-break">
+                    </v-stepper-item>
+                </v-container>
+
+                <v-divider></v-divider>
+
+                <v-container>
+                    <v-stepper-item title="Public Key"
+                        :subtitle="serverStatusStore.publicKeyAccepted === 'accepted' ? 'Accepted' : (serverStatusStore.publicKeyAccepted === 'rejected' ? 'Rejected' : undefined)"
+                        :color="serverStatusStore.publicKeyAccepted === 'accepted' ? 'green' : undefined"
+                        :completed="serverStatusStore.publicKeyAccepted === 'accepted'"
+                        :rules="[() => serverStatusStore.publicKeyAccepted !== 'rejected']" value="2"
+                        icon="mdi-download-lock">
+                    </v-stepper-item>
+                </v-container>
+
+                <v-divider></v-divider>
+
+                <v-container>
+                    <v-stepper-item title="Result"
+                        :color="(serverStatusStore.keystoreAccepted === 'accepted' && serverStatusStore.ticketAccepted === 'accepted' && serverStatusStore.publicKeyAccepted === 'accepted') ? 'green' : undefined"
+                        value="3" icon="mdi-tray-arrow-down">
                     </v-stepper-item>
                 </v-container>
             </v-stepper-header>
             <v-window v-model="step">
-                <v-window-item>
+                <v-window-item :value="0">
                     <KeystoreComponent ref="keystoreForm" class="pa-4" />
                 </v-window-item>
-                <v-window-item>
+                <v-window-item :value="1">
                     <TicketComponent ref="ticketForm" class="pa-4" />
                 </v-window-item>
-                <v-window-item>
+                <v-window-item :value="2">
                     <Publickey ref="encryptionForm" class="pa-4" />
                 </v-window-item>
-                <v-window-item>
+                <v-window-item :value="3">
                     <Result ref="resultForm" class="pa-4" />
                 </v-window-item>
             </v-window>
-            <v-stepper-actions v-model="step" @click:next="next" @click:prev="back" prev-text="Back" next-text="Save">
-            </v-stepper-actions>
+            <v-stepper-actions @click:next="next" @click:prev="back" prev-text="Back" next-text="Save" />
         </v-stepper>
     </v-container>
 </template>

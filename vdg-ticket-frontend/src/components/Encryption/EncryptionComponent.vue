@@ -31,48 +31,45 @@ watch(validationStatus, (newValidationStatus) => {
     }
 });
 
-const validateAndSubmit = async (): Promise<Boolean> => {
+const validateAndSubmit = async (): Promise<boolean> => {
     const result = await formRef.value?.validate();
     const { valid, errors } = result || {};
 
-    if (valid) {
-        return submitToBackend();
-    } else {
+    if (!valid) {
         return false;
     }
+    return await submitToBackend();
 };
 
-const submitToBackend = async (): Promise<Boolean> => {
+const submitToBackend = async (): Promise<boolean> => {
     if (hasPublicKeyDataChanged.value) {
         hasPublicKeyDataChanged.value = false;
 
-        const backendResponse = await encryptionPutRequest(ticketData.publicKeyString)
+        return await encryptionPutRequest(ticketData.publicKeyString)
             .then(response => {
                 if (response.status === 202) {
                     validationStatus.value = 'accepted';
                     serverStatusStore.setNewUserInput(true);
                     console.log(response.status, ' - Public Key was accepted');
-
-                    toast.success("Public Key was accepted!", {
-                        timeout: 3000
-                    })
+                    toast.success("Public Key was accepted!", { timeout: 3000 });
+                    return true;
                 }
-                return true;
+                validationStatus.value = 'rejected';
+                console.log("error - Public Key was rejected");
+                toast.error("Public Key was rejected!", { timeout: 3000 });
+                return false;
             }).catch(error => {
                 if (error.response) {
                     validationStatus.value = 'rejected';
                     console.log(error.response.status, 'Public Key was rejected - Error Response:', error.response.data);
-                    toast.error("Public Key was rejected! Input is not a valid Public Key.", {
-                        timeout: 5000
-                    });
+                    toast.error("Public Key was rejected! Input is not a valid Public Key.", { timeout: 5000 });
                 }
                 return false;
             });
-
-        return backendResponse;
+    } else {
+        // Daten haben sich nicht geändert
+        return serverStatusStore.publicKeyAccepted === 'accepted';
     }
-    if (serverStatusStore.publicKeyAccepted === 'rejected') return false;
-    return true;
 };
 
 const required = (inputField: any) => !!inputField || 'Field is required';
