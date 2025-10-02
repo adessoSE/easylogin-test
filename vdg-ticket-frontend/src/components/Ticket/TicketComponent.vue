@@ -30,53 +30,43 @@ watch(() => ({ ...ticketData }),
     { deep: true }
 );
 
-const validateAndSubmit = async (): Promise<Boolean> => {
+const validateAndSubmit = async (): Promise<boolean> => {
     const result = await formRef.value?.validate();
     const { valid, errors } = result || {};
 
-    if (valid) {
-        return submitToBackend();
-    } else {
+    if (!valid) {
         return false;
     }
+    return await submitToBackend();
 };
 
-const submitToBackend = async (): Promise<Boolean> => {
+const submitToBackend = async (): Promise<boolean> => {
     if (hasTicketDataChanged.value) {
         hasTicketDataChanged.value = false;
-        const backendResponse = await ticketPutRequest(ticketData)
+        return await ticketPutRequest(ticketData)
             .then(response => {
                 if (response.status === 202) {
                     validationStatus.value = 'accepted';
                     serverStatusStore.setNewUserInput(true);
                     console.log(response.status, ' - Ticket was accepted');
-
-                    toast.success("Ticket was accepted!", {
-                        timeout: 3000
-                    });
+                    toast.success("Ticket was accepted!", { timeout: 3000 });
                     return true;
-                } else {
-                    validationStatus.value = 'rejected';
-                    console.log("error - Ticket was rejected");
-                    toast.error("Ticket was rejected!", {
-                        timeout: 3000
-                    });
-                    return false;
                 }
+                validationStatus.value = 'rejected';
+                console.log("error - Ticket was rejected");
+                toast.error("Ticket was rejected!", { timeout: 3000 });
+                return false;
             }).catch(error => {
                 if (error.response) {
                     validationStatus.value = 'rejected';
                     console.log(error.response.status, ' - Error Response Data:', error.response.data);
                 }
                 return false;
-            }
-            );
-
-        return backendResponse;
+            });
+    } else {
+        // Daten haben sich nicht geändert
+        return serverStatusStore.ticketAccepted === 'accepted';
     }
-    if (serverStatusStore.ticketAccepted === 'rejected') return false;
-
-    return true;
 };
 
 watch(validationStatus, (newValidationStatus) => {
